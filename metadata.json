@@ -1,0 +1,6 @@
+{
+  "name": "Nora",
+  "description": "Multi-profile privacy SNS browser with per-profile proxy, real user agents, and zero-leak isolation",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

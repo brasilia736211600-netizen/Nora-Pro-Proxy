@@ -1,0 +1,204 @@
+name: Android CI & Split APKs Build
+
+on:
+  push:
+    branches: [ "main", "master" ]
+    tags:
+      - "v*"
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'نوع البناء (Build Type)'
+        required: true
+        default: 'debug'
+        type: choice
+        options:
+          - debug
+          - release
+          - both
+      run_tests:
+        description: 'تشغيل اختبارات الوحدة (Run Unit Tests)'
+        required: true
+        default: true
+        type: boolean
+      create_release:
+        description: 'إنشاء إصدار على GitHub Release عند الانتهاء (Create GitHub Release)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Nora Browser Split APKs
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android SDK Licenses
+        run: |
+          yes | sdkmanager --licenses || true
+
+      - name: Prepare Environment Files
+        run: |
+          # 1. Ensure .env exists to prevent secrets-gradle-plugin failure
+          if [ ! -f ".env" ]; then
+            if [ -f ".env.example" ]; then
+              cp .env.example .env
+            else
+              touch .env
+            fi
+          fi
+
+          # 2. Setup debug.keystore from base64 if needed
+          if [ ! -f "debug.keystore" ]; then
+            if [ -f "debug.keystore.base64" ]; then
+              echo "Restoring debug.keystore from base64..."
+              base64 -d debug.keystore.base64 > debug.keystore
+            else
+              echo "Generating fresh debug.keystore..."
+              keytool -genkey -v -keystore debug.keystore -storepass android \
+                -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 \
+                -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            fi
+          fi
+
+          # 3. Setup release keystore if secrets provided
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "Restoring release keystore from secrets..."
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > "${{ github.workspace }}/my-upload-key.jks"
+            echo "KEYSTORE_PATH=${{ github.workspace }}/my-upload-key.jks" >> $GITHUB_ENV
+            echo "STORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
+            echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
+          elif [ -f "${{ github.workspace }}/my-upload-key.jks" ]; then
+            echo "Using existing local upload key..."
+            echo "KEYSTORE_PATH=${{ github.workspace }}/my-upload-key.jks" >> $GITHUB_ENV
+          else
+            echo "No custom release keystore provided. Will use debug signing fallback for testable release."
+            echo "KEYSTORE_PATH=${{ github.workspace }}/debug.keystore" >> $GITHUB_ENV
+            echo "STORE_PASSWORD=android" >> $GITHUB_ENV
+            echo "KEY_PASSWORD=android" >> $GITHUB_ENV
+          fi
+
+          # 4. Grant execute permission for Gradle wrapper
+          chmod +x ./gradlew
+
+      - name: Run Unit Tests
+        if: ${{ github.event.inputs.run_tests != 'false' }}
+        run: |
+          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Build Debug APKs (All Architectures)
+        if: ${{ github.event.inputs.build_type == 'debug' || github.event.inputs.build_type == 'both' || github.event.inputs.build_type == '' || startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Build Release APKs (All Architectures)
+        if: ${{ github.event.inputs.build_type == 'release' || github.event.inputs.build_type == 'both' || startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Organize & Rename Artifacts
+        run: |
+          mkdir -p build_output/apks
+          mkdir -p build_output/apks/by_architecture
+
+          # Copy debug APKs if built
+          if [ -d "app/build/outputs/apk/debug" ]; then
+            echo "Copying Debug APKs..."
+            cp app/build/outputs/apk/debug/*.apk build_output/apks/ 2>/dev/null || true
+          fi
+
+          # Copy release APKs if built
+          if [ -d "app/build/outputs/apk/release" ]; then
+            echo "Copying Release APKs..."
+            cp app/build/outputs/apk/release/*.apk build_output/apks/ 2>/dev/null || true
+          fi
+
+          # Organize into distinct named architecture files
+          cd build_output/apks
+          for file in *.apk; do
+            [ -f "$file" ] || continue
+            # Generate SHA256 checksum
+            sha256sum "$file" >> SHA256SUMS.txt
+            echo "Generated APK: $file ($(du -h "$file" | cut -f1))"
+          done
+
+          # Create separate architecture folders for easy single-download
+          for abi in arm64-v8a armeabi-v7a x86_64 x86 universal; do
+            mkdir -p "by_architecture/$abi"
+            cp *$abi*.apk "by_architecture/$abi/" 2>/dev/null || true
+          done
+          cd ../..
+
+      - name: Upload All APKs (Full Bundle)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nora-Browser-All-Architectures-APKs
+          path: build_output/apks/
+          retention-days: 14
+
+      - name: Upload arm64-v8a APK (Most Modern Phones)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nora-Browser-arm64-v8a
+          path: build_output/apks/by_architecture/arm64-v8a/
+          retention-days: 14
+
+      - name: Upload armeabi-v7a APK (Older 32-bit Phones)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nora-Browser-armeabi-v7a
+          path: build_output/apks/by_architecture/armeabi-v7a/
+          retention-days: 14
+
+      - name: Upload x86_64 APK (64-bit Emulators & ChromeOS)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nora-Browser-x86_64
+          path: build_output/apks/by_architecture/x86_64/
+          retention-days: 14
+
+      - name: Upload Universal APK (All ABIs Combined)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nora-Browser-Universal
+          path: build_output/apks/by_architecture/universal/
+          retention-days: 14
+
+      - name: Create GitHub Release
+        if: ${{ startsWith(github.ref, 'refs/tags/') || github.event.inputs.create_release == 'true' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Nora Browser Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            build_output/apks/*.apk
+            build_output/apks/SHA256SUMS.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

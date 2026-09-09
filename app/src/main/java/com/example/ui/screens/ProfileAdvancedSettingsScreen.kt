@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -59,6 +60,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -92,15 +94,19 @@ import com.example.network.ProxyTestResult
 import com.example.network.ProxyTester
 import kotlinx.coroutines.launch
 
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Shield
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileAdvancedSettingsScreen(
     profile: NoraProfile,
     onSave: (NoraProfile) -> Unit,
+    onClearProfileData: (String) -> Unit = {},
     onBack: () -> Unit
 ) {
     var editedProfile by remember { mutableStateOf(profile) }
-    var selectedTab by remember { mutableIntStateOf(0) } // 0 = General, 1 = Proxy (1a), 2 = User Agent (1b), 3 = Time / Clock (1c)
+    var selectedTab by remember { mutableIntStateOf(0) } // 0 = General, 1 = Proxy, 2 = User Agent, 3 = Time, 4 = Privacy
     val coroutineScope = rememberCoroutineScope()
 
     Scaffold(
@@ -179,6 +185,12 @@ fun ProfileAdvancedSettingsScreen(
                     text = { Text("Time / Clock") },
                     icon = { Icon(Icons.Default.AccessTime, contentDescription = null, modifier = Modifier.size(18.dp)) }
                 )
+                Tab(
+                    selected = selectedTab == 4,
+                    onClick = { selectedTab = 4 },
+                    text = { Text("Privacy / العزل") },
+                    icon = { Icon(Icons.Default.Shield, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                )
             }
 
             Column(
@@ -204,6 +216,11 @@ fun ProfileAdvancedSettingsScreen(
                         time = editedProfile.time,
                         proxy = editedProfile.proxy,
                         onUpdate = { editedProfile = editedProfile.copy(time = it) }
+                    )
+                    4 -> ProfilePrivacySettingsTab(
+                        profile = editedProfile,
+                        onUpdate = { editedProfile = it },
+                        onClearData = { onClearProfileData(editedProfile.id) }
                     )
                 }
             }
@@ -894,3 +911,165 @@ private fun TimeSettingsTab(
         }
     }
 }
+
+@Composable
+private fun ProfilePrivacySettingsTab(
+    profile: NoraProfile,
+    onUpdate: (NoraProfile) -> Unit,
+    onClearData: () -> Unit
+) {
+    var showClearConfirmation by remember { mutableStateOf(false) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "سلوك التصفح والعزل (Profile Startup & Behavior)",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+
+                OutlinedTextField(
+                    value = profile.privacy.startupUrl,
+                    onValueChange = { onUpdate(profile.copy(privacy = profile.privacy.copy(startupUrl = it))) },
+                    label = { Text("صفحة البداية لهذا البروفايل / Startup URL") },
+                    placeholder = { Text("مثال: https://x.com أو اتركه فارغاً") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = profile.privacy.notes,
+                    onValueChange = { onUpdate(profile.copy(privacy = profile.privacy.copy(notes = it))) },
+                    label = { Text("ملاحظات البروفايل / Profile Notes") },
+                    placeholder = { Text("وصف الحساب، الاستخدام، أو الوسوم...") },
+                    maxLines = 3,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text(
+                    text = "دروع الخصوصية المخصصة (Privacy Shields)",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+
+                SettingSwitchRow(
+                    title = "حظر المتتبعات والإعلانات",
+                    description = "تفعيل درع حظر الإعلانات والتحليلات خصيصاً لهذا البروفايل",
+                    checked = profile.privacy.blockTrackers,
+                    onCheckedChange = { onUpdate(profile.copy(privacy = profile.privacy.copy(blockTrackers = it))) }
+                )
+
+                HorizontalDivider()
+
+                SettingSwitchRow(
+                    title = "حماية تسريب IP عبر WebRTC",
+                    description = "منع المواقع من استكشاف IP الحقيقي لجهازك عند استخدام البروكسي",
+                    checked = profile.privacy.webrtcProtection,
+                    onCheckedChange = { onUpdate(profile.copy(privacy = profile.privacy.copy(webrtcProtection = it))) }
+                )
+
+                HorizontalDivider()
+
+                SettingSwitchRow(
+                    title = "طلب موقع سطح المكتب دائماً (Desktop Mode)",
+                    description = "فتح صفحات الويب كمتصفح كمبيوتر مكتبي وليس هاتف",
+                    checked = profile.privacy.forceDesktopMode,
+                    onCheckedChange = { onUpdate(profile.copy(privacy = profile.privacy.copy(forceDesktopMode = it))) }
+                )
+
+                HorizontalDivider()
+
+                SettingSwitchRow(
+                    title = "إرسال ترويسة عدم التتبع (DNT)",
+                    description = "طلب عدم التتبع من خوادم الويب",
+                    checked = profile.privacy.doNotTrack,
+                    onCheckedChange = { onUpdate(profile.copy(privacy = profile.privacy.copy(doNotTrack = it))) }
+                )
+            }
+        }
+
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "تطهير بيانات الجلسة (Session Wipe)",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.error
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "مسح جميع الكوكيز والسجلات والتخزين المحلي الخاص بهذا البروفايل فقط دون المساس بالبروفايلات الأخرى.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = { showClearConfirmation = true },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(imageVector = Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("مسح كوكيز وبيانات هذا البروفايل")
+                }
+            }
+        }
+    }
+
+    if (showClearConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirmation = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.DeleteSweep,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(36.dp)
+                )
+            },
+            title = {
+                Text("تأكيد مسح بيانات البروفايل")
+            },
+            text = {
+                Text("هل أنت متأكد من مسح جميع ملفات تعريف الارتباط (Cookies) وتخزين الويب الخاص بـ \"${profile.name}\"؟ ستسجل خروجك من كافة الحسابات المفتوحة في هذا البروفايل.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onClearData()
+                        showClearConfirmation = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("نعم، امسح الآن")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearConfirmation = false }) {
+                    Text("إلغاء")
+                }
+            }
+        )
+    }
+}
+

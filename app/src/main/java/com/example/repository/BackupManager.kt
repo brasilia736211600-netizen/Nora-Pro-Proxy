@@ -11,6 +11,7 @@ import com.example.model.BrowserHistoryItem
 import com.example.model.FloatingWidgetSettings
 import com.example.model.FullBrowserBackup
 import com.example.model.NoraProfile
+import com.example.model.ProfilePrivacyConfig
 import com.example.model.ParsedBackupPreview
 import com.example.model.ProfilesBackupPayload
 import com.example.model.ProxyConfig
@@ -73,6 +74,17 @@ object BackupManager {
         timeObj.put("simulatedTimezone", p.time.simulatedTimezone)
         obj.put("time", timeObj)
 
+        // Privacy
+        val privObj = JSONObject()
+        privObj.put("blockTrackers", p.privacy.blockTrackers)
+        privObj.put("blockThirdPartyCookies", p.privacy.blockThirdPartyCookies)
+        privObj.put("doNotTrack", p.privacy.doNotTrack)
+        privObj.put("forceDesktopMode", p.privacy.forceDesktopMode)
+        privObj.put("webrtcProtection", p.privacy.webrtcProtection)
+        privObj.put("startupUrl", p.privacy.startupUrl)
+        privObj.put("notes", p.privacy.notes)
+        obj.put("privacy", privObj)
+
         return obj
     }
 
@@ -80,6 +92,7 @@ object BackupManager {
         val proxyObj = obj.optJSONObject("proxy") ?: JSONObject()
         val uaObj = obj.optJSONObject("userAgent") ?: JSONObject()
         val timeObj = obj.optJSONObject("time") ?: JSONObject()
+        val privObj = obj.optJSONObject("privacy") ?: JSONObject()
 
         val proxy = ProxyConfig(
             enabled = proxyObj.optBoolean("enabled", false),
@@ -112,6 +125,16 @@ object BackupManager {
             simulatedTimezone = timeObj.optString("simulatedTimezone", "UTC")
         )
 
+        val privacy = ProfilePrivacyConfig(
+            blockTrackers = privObj.optBoolean("blockTrackers", true),
+            blockThirdPartyCookies = privObj.optBoolean("blockThirdPartyCookies", true),
+            doNotTrack = privObj.optBoolean("doNotTrack", true),
+            forceDesktopMode = privObj.optBoolean("forceDesktopMode", false),
+            webrtcProtection = privObj.optBoolean("webrtcProtection", true),
+            startupUrl = privObj.optString("startupUrl", ""),
+            notes = privObj.optString("notes", "")
+        )
+
         return NoraProfile(
             id = obj.optString("id", UUID.randomUUID().toString()),
             name = obj.optString("name", "Unnamed Profile"),
@@ -124,7 +147,8 @@ object BackupManager {
             usageCount = obj.optInt("usageCount", 0),
             proxy = proxy,
             userAgent = ua,
-            time = time
+            time = time,
+            privacy = privacy
         )
     }
 

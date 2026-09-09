@@ -233,6 +233,61 @@ class ProfileRepository(private val context: Context) {
         persistBookmarks()
     }
 
+    fun isBookmarked(url: String): Boolean {
+        if (url.isBlank()) return false
+        return _bookmarks.value.any { it.url.equals(url, ignoreCase = true) }
+    }
+
+    fun toggleBookmark(title: String, url: String, profileId: String = ""): Boolean {
+        val existing = _bookmarks.value.find { it.url.equals(url, ignoreCase = true) }
+        return if (existing != null) {
+            deleteBookmark(existing.id)
+            false
+        } else {
+            addBookmark(title, url, profileId)
+            true
+        }
+    }
+
+    fun clearProfileData(profileId: String) {
+        // Clear history for this profile
+        _history.value = _history.value.filter { it.profileId != profileId }
+        persistHistory()
+        // Clear cookies in WebView ProfileStore if supported
+        try {
+            if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.MULTI_PROFILE)) {
+                val profileStore = androidx.webkit.ProfileStore.getInstance()
+                val webProfile = profileStore.getProfile(profileId)
+                webProfile?.cookieManager?.removeAllCookies(null)
+                webProfile?.webStorage?.deleteAllData()
+            } else {
+                android.webkit.CookieManager.getInstance().removeAllCookies(null)
+                android.webkit.WebStorage.getInstance().deleteAllData()
+            }
+        } catch (_: Exception) {}
+    }
+
+    fun clearBrowsingData(clearHist: Boolean, clearMarks: Boolean, clearCookies: Boolean, clearCache: Boolean) {
+        if (clearHist) {
+            _history.value = emptyList()
+            persistHistory()
+        }
+        if (clearMarks) {
+            _bookmarks.value = emptyList()
+            persistBookmarks()
+        }
+        if (clearCookies) {
+            try {
+                android.webkit.CookieManager.getInstance().removeAllCookies(null)
+            } catch (_: Exception) {}
+        }
+        if (clearCache) {
+            try {
+                android.webkit.WebStorage.getInstance().deleteAllData()
+            } catch (_: Exception) {}
+        }
+    }
+
     fun deleteBookmark(id: String) {
         _bookmarks.value = _bookmarks.value.filter { it.id != id }
         persistBookmarks()

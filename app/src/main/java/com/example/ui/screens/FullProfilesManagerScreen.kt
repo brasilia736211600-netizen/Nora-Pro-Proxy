@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -98,6 +99,7 @@ fun FullProfilesManagerScreen(
     onToggleProxy: (String) -> Unit,
     onCreateProfile: (NoraProfile) -> Unit,
     onOpenBackupRestore: () -> Unit = {},
+    onOpenBrowserSettings: () -> Unit = {},
     onBack: () -> Unit
 ) {
     var criteria by remember { mutableStateOf(ProfileFilterCriteria()) }
@@ -123,12 +125,12 @@ fun FullProfilesManagerScreen(
                 title = {
                     Column {
                         Text(
-                            text = "Profiles Manager",
+                            text = "إدارة البروفايلات (Profiles)",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "${profiles.size} total profiles • ${filteredList.size} visible",
+                            text = "${profiles.size} ملفات تعريف • ${filteredList.size} معروض",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -140,6 +142,16 @@ fun FullProfilesManagerScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = onOpenBrowserSettings,
+                        modifier = Modifier.testTag("btn_open_browser_settings")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "إعدادات المتصفح"
+                        )
+                    }
+
                     IconButton(
                         onClick = onOpenBackupRestore,
                         modifier = Modifier.testTag("btn_open_backup_restore")

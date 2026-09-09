@@ -71,6 +71,16 @@ data class TimeConfig(
     val simulatedTimezone: String = "UTC"
 )
 
+data class ProfilePrivacyConfig(
+    val blockTrackers: Boolean = true,
+    val blockThirdPartyCookies: Boolean = true,
+    val doNotTrack: Boolean = true,
+    val forceDesktopMode: Boolean = false,
+    val webrtcProtection: Boolean = true,
+    val startupUrl: String = "",
+    val notes: String = ""
+)
+
 data class NoraProfile(
     val id: String,
     val name: String,
@@ -83,5 +93,6 @@ data class NoraProfile(
     val usageCount: Int = 0,
     val proxy: ProxyConfig = ProxyConfig(),
     val userAgent: UserAgentConfig = UserAgentConfig(),
-    val time: TimeConfig = TimeConfig()
+    val time: TimeConfig = TimeConfig(),
+    val privacy: ProfilePrivacyConfig = ProfilePrivacyConfig()
 )
